@@ -1,0 +1,127 @@
+----
+2025.8.29
+
+		public void Test01()
+		{
+			Test01_a(
+				@"C:\temp\0001",
+				@"C:\temp\0002"
+				);
+		}
+
+		private void Test01_a(string rootDir1, string rootDir2)
+		{
+			rootDir1 = SCommon.MakeFullPath(rootDir1);
+			rootDir2 = SCommon.MakeFullPath(rootDir2);
+
+			Console.WriteLine(rootDir1);
+			Console.WriteLine(rootDir2);
+
+			string[] relFiles1 = GetRelFiles(rootDir1);
+			string[] relFiles2 = GetRelFiles(rootDir2);
+
+			string[] bothRelFiles = SCommon.GetMerge(relFiles1, relFiles2, SCommon.CompIgnoreCase)[1].ToArray();
+
+			foreach (string bothRelFile in bothRelFiles)
+			{
+				string file1 = Path.Combine(rootDir1, bothRelFile);
+				string file2 = Path.Combine(rootDir2, bothRelFile);
+
+				if (
+					IsSameFile(file1, file2) ||
+					IsSameSourceFile(file1, file2, Encoding.UTF8) ||
+					IsSameSourceFile(file1, file2, SCommon.ENCODING_SJIS)
+					)
+				{
+					Console.WriteLine("DELETE-FILE: " + bothRelFile);
+
+					SCommon.DeletePath(file1);
+					SCommon.DeletePath(file2);
+				}
+			}
+			RemoveSubDirsIfEmpty(rootDir1);
+			RemoveSubDirsIfEmpty(rootDir2);
+
+			Console.WriteLine("done!");
+		}
+
+		private void RemoveSubDirsIfEmpty(string rootDir)
+		{
+			string[] dirs = Directory.GetDirectories(rootDir)
+				.OrderBy(SCommon.CompIgnoreCase)
+				.ToArray();
+
+			foreach (string dir in dirs)
+			{
+				RemoveSubDirsIfEmpty(dir);
+
+				// ? dir == 空のディレクトリ
+				if (
+					Directory.GetDirectories(dir).Length == 0 &&
+					Directory.GetFiles(dir).Length == 0
+					)
+				{
+					Console.WriteLine("DELETE-DIRECTORY: " + dir);
+
+					SCommon.DeletePath(dir);
+				}
+			}
+		}
+
+		private string[] GetRelFiles(string dir)
+		{
+			return Directory.GetFiles(dir, "*", SearchOption.AllDirectories)
+				.Select(file => SCommon.ChangeRoot(file, dir))
+				.ToArray();
+		}
+
+		private bool IsSameFile(string file1, string file2)
+		{
+			using (FileStream reader1 = new FileStream(file1, FileMode.Open, FileAccess.Read, FileShare.Read))
+			using (FileStream reader2 = new FileStream(file2, FileMode.Open, FileAccess.Read, FileShare.Read))
+			{
+				long fileSize = reader1.Length;
+
+				if (fileSize != reader2.Length)
+					return false;
+
+				for (long index = 0L; index < fileSize; index++)
+				{
+					int b1 = reader1.ReadByte();
+					int b2 = reader2.ReadByte();
+
+					if (b1 != b2)
+						return false;
+				}
+			}
+			return true;
+		}
+
+		private bool IsSameSourceFile(string file1, string file2, Encoding encoding)
+		{
+			const long FILE_SIZE_MAX = 30000000L;
+
+			FileInfo info1 = new FileInfo(file1);
+			FileInfo info2 = new FileInfo(file2);
+
+			// ファイルが大きすぎる場合、判定しない。
+			if (
+				info1.Length > FILE_SIZE_MAX ||
+				info2.Length > FILE_SIZE_MAX
+				)
+				return false;
+
+			string source1 = File.ReadAllText(file1, encoding);
+			string source2 = File.ReadAllText(file2, encoding);
+
+			source1 = ISSF_Normalize(source1);
+			source2 = ISSF_Normalize(source2);
+
+			return source1 == source2;
+		}
+
+		private string ISSF_Normalize(string source)
+		{
+			return source.Replace("\r", "").Trim();
+		}
+
